@@ -7,10 +7,11 @@ import 'package:flutter_game_card_with_flutter/chat_bubble.dart';
 class ChapPage extends StatefulWidget {
   final String receiverUserEmail;
   final String receiverUserID;
-  const ChapPage(
-      {super.key,
-      required this.receiverUserEmail,
-      required this.receiverUserID});
+  const ChapPage({
+    Key? key,
+    required this.receiverUserEmail,
+    required this.receiverUserID,
+  }) : super(key: key);
 
   @override
   State<ChapPage> createState() => _ChapPageState();
@@ -20,53 +21,80 @@ class _ChapPageState extends State<ChapPage> {
   final TextEditingController _messageController = TextEditingController();
   final ChatService _chatService = ChatService();
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+  final bool _dialog = true;
+
   void sendMessage() async {
     // only send message if there is sth to send
     if (_messageController.text.isNotEmpty) {
       await _chatService.sendMessage(
-          widget.receiverUserID, _messageController.text);
+        widget.receiverUserID,
+        _messageController.text,
+      );
       // clear the text controller after sending the message
       _messageController.clear();
     }
   }
 
+
+Widget showDialogWidget() {
+    // Replace this with your custom dialog widget
+    return Center(
+      child:  AlertDialog(
+        title: Text('Dialog Title'),
+        content: Text('This is a dialog visible to both users.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Text('Close'),
+          ),
+        ],
+      )
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.receiverUserEmail)),
-      body: Column(children: [
-        //messages
-        Expanded(child: _buildMessageList()),
-        //user input
-        _buildMessageInput(),
-      ]),
+      body: _dialog ? showDialogWidget() : Column(
+        children: [
+          //messages
+          Expanded(child: _buildMessageList()),
+          //user input
+          _buildMessageInput(),
+        ],
+      ),
     );
   }
 
   // build message list
   Widget _buildMessageList() {
     return StreamBuilder<QuerySnapshot>(
-        stream: _chatService.getMessages(
-            widget.receiverUserID, _firebaseAuth.currentUser!.uid),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Text('Error ${snapshot.error}');
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Text('loading ..');
-          }
-          return ListView(
-            children: snapshot.data!.docs
-                .map((document) => _buildMessageItem(document))
-                .toList(),
-          );
-        });
+      stream: _chatService.getMessages(
+        widget.receiverUserID,
+        _firebaseAuth.currentUser!.uid,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text('Error ${snapshot.error}');
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Text('Loading ...');
+        }
+        return ListView(
+          children: snapshot.data!.docs
+              .map((document) => _buildMessageItem(document))
+              .toList(),
+        );
+      },
+    );
   }
 
-  //build message item
+  // build message item
   Widget _buildMessageItem(DocumentSnapshot document) {
     Map<String, dynamic> data = document.data() as Map<String, dynamic>;
-    // align the messages to the right if the send is the current user
+    // align the messages to the right if the sender is the current user
     var alignment = (data['senderId'] == _firebaseAuth.currentUser!.uid)
         ? Alignment.centerRight
         : Alignment.centerLeft;
@@ -75,64 +103,68 @@ class _ChapPageState extends State<ChapPage> {
       child: Padding(
         padding: const EdgeInsets.all(8.0),
         child: Column(
-            crossAxisAlignment:
-                (data['senderId'] == _firebaseAuth.currentUser!.uid)
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-            mainAxisAlignment:
-                (data['senderId'] == _firebaseAuth.currentUser!.uid)
-                    ? MainAxisAlignment.end
-                    : MainAxisAlignment.start,
-            children: [
-              Text(data['senderEmail']),
-              SizedBox(
-                height: 5,
-              ),
-              ChatBubble(message: data['message'])
-            ]),
+          crossAxisAlignment:
+              (data['senderId'] == _firebaseAuth.currentUser!.uid)
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+          mainAxisAlignment:
+              (data['senderId'] == _firebaseAuth.currentUser!.uid)
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+          children: [
+            Text(data['senderEmail']),
+            SizedBox(
+              height: 5,
+            ),
+            ChatBubble(message: data['message']),
+          ],
+        ),
       ),
     );
   }
 
   // build message input
   Widget _buildMessageInput() {
-    return Row(
-  children: [
-    Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        child: TextField(
-          controller: _messageController,
-          obscureText: false,
-          decoration: InputDecoration(
-            hintText: 'Type your message here',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(20.0),
-              borderSide: BorderSide(color: Colors.grey),
+    return Container(
+      margin: EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: TextField(
+                controller: _messageController,
+                obscureText: false,
+                decoration: InputDecoration(
+                  hintText: 'Type your message here',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20.0),
+                    borderSide: BorderSide(color: Colors.grey),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20.0),
+                    borderSide: BorderSide(color: Colors.blue),
+                  ),
+                  contentPadding:
+                      EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+                ),
+                style: TextStyle(fontSize: 16.0),
+                maxLines: null,
+                keyboardType: TextInputType.multiline,
+              ),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(20.0),
-              borderSide: BorderSide(color: Colors.blue),
-            ),
-            contentPadding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
           ),
-          style: TextStyle(fontSize: 16.0),
-          maxLines: null,
-          keyboardType: TextInputType.multiline,
-        ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: IconButton(
+              onPressed: sendMessage,
+              icon: Icon(Icons.send),
+              color: Colors.blue,
+              iconSize: 30.0,
+            ),
+          ),
+        ],
       ),
-    ),
-    Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: IconButton(
-        onPressed: sendMessage,
-        icon: Icon(Icons.send),
-        color: Colors.blue,
-        iconSize: 30.0,
-      ),
-    )
-  ],
-)
-;
+    );
   }
 }
