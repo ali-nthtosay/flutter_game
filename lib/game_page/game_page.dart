@@ -10,9 +10,16 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('game page '),
+    return WillPopScope(
+      onWillPop: () async {
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false, // Remove back icon
+
+          title: Text('game page '),
+        ),
       ),
     );
   }
