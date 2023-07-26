@@ -3,7 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 class GameOne extends StatefulWidget {
-  const GameOne({Key? key}) : super(key: key);
+ final String gameRoomId;
+  GameOne({required this.gameRoomId});
 
   @override
   State<GameOne> createState() => _GameOneState();
@@ -102,7 +103,7 @@ class _GameOneState extends State<GameOne> {
               onPressed: () {
                 _playGame(1);
               },
-              child: Text('Player 1'),
+              child: Text('Spieler 1'),
             ),
             Text(
               'Player 1 Card Value: ${player1Card.isNotEmpty ? player1Card : '---'}',
@@ -113,7 +114,7 @@ class _GameOneState extends State<GameOne> {
               onPressed: () {
                 _playGame(2);
               },
-              child: Text('Player 2'),
+              child: Text('Spieler 2'),
             ),
             Text(
               'Player 2 Card Value: ${player2Card.isNotEmpty ? player2Card : '---'}',
