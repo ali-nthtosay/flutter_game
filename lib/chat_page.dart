@@ -38,33 +38,52 @@ class _ChapPageState extends State<ChapPage> {
     }
   }
 
-void _showDialog() {
-  showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text('Matchmaking'),
-        content: Text('Möchtest du mit dem Spiel anfangen'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              // Code to handle button press in the dialog
-              // Update the "in-game status" in Firestore
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(_firebaseAuth.currentUser!.uid)
-                  .update({"in-game": true});
+void _showDialog() async {
+  // Check if a game room already exists for both users
+  String gameRoomId =
+      '${_firebaseAuth.currentUser!.uid}_${widget.receiverUserID}';
+  DocumentSnapshot gameRoomSnapshot = await FirebaseFirestore.instance
+      .collection('game_rooms')
+      .doc(gameRoomId)
+      .get();
+  String gameRoomIdReverse =
+      '${widget.receiverUserID}_${_firebaseAuth.currentUser!.uid}';
+  DocumentSnapshot gameRoomReverseSnapshot =
+      await FirebaseFirestore.instance
+          .collection('game_rooms')
+          .doc(gameRoomIdReverse)
+          .get();
 
-              // Check if a game room already exists for both users
-              String gameRoomId =
-                  '${_firebaseAuth.currentUser!.uid}_${widget.receiverUserID}';
-              DocumentSnapshot gameRoomSnapshot =
-                  await FirebaseFirestore.instance
-                      .collection('game_rooms')
-                      .doc(gameRoomId)
-                      .get();
+  if (gameRoomSnapshot.exists || gameRoomReverseSnapshot.exists) {
+    // If the game room exists, navigate to GameOne page directly
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (context) => GameOne(
+        gameRoomId: gameRoomId,
+        userMap: {
+          'player1Uid': _firebaseAuth.currentUser!.uid,
+          'player1Email': _firebaseAuth.currentUser!.email,
+          'player2Uid': widget.receiverUserID,
+          'player2Email': widget.receiverUserEmail,
+        },
+      ),
+    ));
+  } else {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Matchmaking'),
+          content: Text('Möchtest du mit dem Spiel anfangen'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // Code to handle button press in the dialog
+                // Update the "in-game status" in Firestore
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(_firebaseAuth.currentUser!.uid)
+                    .update({"in-game": true});
 
-              if (!gameRoomSnapshot.exists) {
                 // Create a new game room with both users' IDs
                 await FirebaseFirestore.instance
                     .collection('game_rooms')
@@ -73,35 +92,60 @@ void _showDialog() {
                   'player1Uid': _firebaseAuth.currentUser!.uid,
                   'player2Uid': widget.receiverUserID,
                 });
-              }
 
-              // Navigate to GameOne page and pass the userMap
-              Navigator.of(context).pushReplacement(MaterialPageRoute(
-                builder: (context) => GameOne(
-                  gameRoomId: gameRoomId,
-                  userMap: {
-                    'player1Uid': _firebaseAuth.currentUser!.uid,
-                    'player1Email': _firebaseAuth.currentUser!.email,
-                    'player2Uid': widget.receiverUserID,
-                    'player2Email': widget.receiverUserEmail,
-                  },
-                ),
-              ));
-            },
-            child: Text('OK'),
-          ),
-          TextButton(
-            onPressed: () {
-              // Code to handle button press in the dialog
-              Navigator.of(context).pop();
-            },
-            child: Text('Nein'),
-          ),
-        ],
-      );
-    },
-  );
+                // Create extra collections for players' cards and scores
+                await FirebaseFirestore.instance
+                    .collection('game_rooms')
+                    .doc(gameRoomId)
+                    .collection('players')
+                    .doc(_firebaseAuth.currentUser!.uid)
+                    .set({
+                  'score': 0,
+                  'card': '',
+                });
+
+                await FirebaseFirestore.instance
+                    .collection('game_rooms')
+                    .doc(gameRoomId)
+                    .collection('players')
+                    .doc(widget.receiverUserID)
+                    .set({
+                  'score': 0,
+                  'card': '',
+                });
+
+                // Navigate to GameOne page and pass the userMap
+                Navigator.of(context).pushReplacement(MaterialPageRoute(
+                  builder: (context) => GameOne(
+                    gameRoomId: gameRoomId,
+                    userMap: {
+                      'player1Uid': _firebaseAuth.currentUser!.uid,
+                      'player1Email': _firebaseAuth.currentUser!.email,
+                      'player2Uid': widget.receiverUserID,
+                      'player2Email': widget.receiverUserEmail,
+                    },
+                  ),
+                ));
+              },
+              child: Text('OK'),
+            ),
+            TextButton(
+              onPressed: () {
+                // Code to handle button press in the dialog
+                Navigator.of(context).pop();
+              },
+              child: Text('Nein'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
+
+
+
+
 
 
 
@@ -342,7 +386,52 @@ class _GameOneState extends State<GameOne> {
   String player2Card = '';
   bool player2Clicked = false;
 
-  void _playGame(int playerNumber) async {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch players' scores and cards from Firestore
+    _fetchPlayersData();
+  }
+
+  void _fetchPlayersData() async {
+    try {
+      DocumentSnapshot player1Snapshot = await _firestore
+          .collection('game_rooms')
+          .doc(widget.gameRoomId)
+          .collection('players')
+          .doc(widget.userMap['player1Uid'])
+          .get();
+
+      DocumentSnapshot player2Snapshot = await _firestore
+          .collection('game_rooms')
+          .doc(widget.gameRoomId)
+          .collection('players')
+          .doc(widget.userMap['player2Uid'])
+          .get();
+
+      setState(() {
+        player1Score = player1Snapshot.get('score');
+        player1Card = player1Snapshot.get('card');
+        player2Score = player2Snapshot.get('score');
+        player2Card = player2Snapshot.get('card');
+      });
+    } catch (e) {
+      print('Error fetching players data: $e');
+    }
+  }
+
+void _playGame(int playerNumber) async {
+  // Check if it's the current user's turn to play
+  String currentPlayerUid = (playerNumber == 1)
+      ? widget.userMap['player1Uid']
+      : widget.userMap['player2Uid'];
+
+  String currentUserUid = _firebaseAuth.currentUser!.uid;
+
+  if (currentPlayerUid == currentUserUid) {
     setState(() {
       if (playerNumber == 1) {
         player1Card = cards[Random().nextInt(cards.length)].toString();
@@ -376,9 +465,50 @@ class _GameOneState extends State<GameOne> {
         });
       }
     });
-  }
 
-  void _showGameResult() {
+    // Update player's data in Firestore
+    _updatePlayersData();
+  }
+}
+
+
+void _updatePlayersData() async {
+  try {
+    // Player 1 data
+    Map<String, dynamic> player1Data = {
+      'uid': widget.userMap['player1Uid'],
+      'email': widget.userMap['player1Email'],
+      'score': player1Score,
+      'card': player1Card,
+    };
+    await _firestore
+        .collection('game_rooms')
+        .doc(widget.gameRoomId)
+        .collection('players')
+        .doc(widget.userMap['player1Uid'])
+        .set(player1Data);
+
+    // Player 2 data
+    Map<String, dynamic> player2Data = {
+      'uid': widget.userMap['player2Uid'],
+      'email': widget.userMap['player2Email'],
+      'score': player2Score,
+      'card': player2Card,
+    };
+    await _firestore
+        .collection('game_rooms')
+        .doc(widget.gameRoomId)
+        .collection('players')
+        .doc(widget.userMap['player2Uid'])
+        .set(player2Data);
+  } catch (e) {
+    print('Error updating players data: $e');
+  }
+}
+
+
+
+void _showGameResult() {
     String winner;
     if (player1Score == player2Score) {
       winner = 'It\'s a tie!';
@@ -410,55 +540,69 @@ class _GameOneState extends State<GameOne> {
   }
 ////////////////////////////////////////////////game design//
   Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Text('Game ${widget.userMap['player1Email']} VS ${widget.userMap['player2Email']}'),
-    ),
-    backgroundColor: Colors.grey[200],
-    body: Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildCard(
-            title: 'Player 1 Email:',
-            content: '${widget.userMap['player1Email'] ?? '---'}',
-          ),
-          SizedBox(height: 20),
-          _buildCard(
-            title: 'Player One Score:',
-            content: '$player1Score',
-            buttonText: 'Play',
-            onPressed: () => _playGame(1),
-          ),
-          SizedBox(height: 20),
-          _buildCard(
-            title: 'Player 1 Card Value:',
-            content: '${player1Card.isNotEmpty ? player1Card : '---'}',
-          ),
-          SizedBox(height: 20),
-          _buildCard(
-            title: 'Player 2 Card Value:',
-            content: '${player2Card.isNotEmpty ? player2Card : '---'}',
-          ),
-          SizedBox(height: 20),
-          _buildCard(
-            title: 'Player Two Score:',
-            content: '$player2Score',
-            buttonText: 'Play',
-            onPressed: () => _playGame(2),
-            buttonColor: Colors.green,
-          ),
-          SizedBox(height: 20),
-          _buildCard(
-            title: 'Player 2 Email:',
-            content: '${widget.userMap['player2Email'] ?? '---'}',
-          ),
-        ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Game ${widget.userMap['player1Email']} VS ${widget.userMap['player2Email']}',
+        ),
       ),
-    ),
-  );
-}
-
+      backgroundColor: Colors.grey[200],
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Player 1 Section
+            _buildPlayerSection(
+              playerEmail: widget.userMap['player1Email'],
+              playerScore: player1Score,
+              playerCard: player1Card,
+              onPressed: () => _playGame(1),
+            ),
+            SizedBox(height: 20),
+            // Player 2 Section
+            _buildPlayerSection(
+              playerEmail: widget.userMap['player2Email'],
+              playerScore: player2Score,
+              playerCard: player2Card,
+              onPressed: () => _playGame(2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildPlayerSection({
+    required String playerEmail,
+    required int playerScore,
+    required String playerCard,
+    required VoidCallback onPressed,
+  }) {
+    return Column(
+      children: [
+        Text(
+          'Player Email: $playerEmail',
+          style: TextStyle(fontSize: 18),
+        ),
+        SizedBox(height: 20),
+        Text(
+          'Player Score: $playerScore',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: onPressed,
+          child: Text('Play'),
+          style: ElevatedButton.styleFrom(primary: Colors.blue),
+        ),
+        SizedBox(height: 20),
+        Text(
+          'Player Card Value: ${playerCard.isNotEmpty ? playerCard : '---'}',
+          style: TextStyle(fontSize: 20),
+        ),
+        SizedBox(height: 20),
+      ],
+    );
+  }
 Widget _buildCard({
   required String title,
   required String content,
